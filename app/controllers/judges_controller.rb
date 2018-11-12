@@ -6,6 +6,8 @@ class JudgesController < ApplicationController
 	def judge
 		logger.debug("postを受け取ったぜ")
 
+		logger.debug(params)
+
 		# paramsを元にジャッジする
 		code = params[:code]
 		lang = params[:language]
