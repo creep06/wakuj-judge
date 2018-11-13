@@ -65,7 +65,6 @@ class JudgesController < ApplicationController
 
 		# 時間はms単位で扱ってることに注意 メモリはMB
 		tlim = params[:time_limit].to_i
-		tlim2 = tlim * 2
 		mlim = params[:memory_limit].to_i
 		testnum = params[:testcases_number].to_i
 		problem_id = params[:problem_id]
@@ -98,14 +97,16 @@ class JudgesController < ApplicationController
 			# 実行
 			container.store_file("/tmp/input.txt", input)
 			logger.debug("テストケース" + i.to_s)
-			res = container.exec(["timeout", "#{tlim*2}", "bash", "-c", "time #{exec_cmd} < input.txt"])
+			res = container.exec(["timeout", "#{tlim.to_f/1000}", "bash", "-c", "time #{exec_cmd} < input.txt"])
 			# おまじない
 			# ぐちゃぐちゃなexecから出力と実行時間を取り出してる
 			output, tmp = res.join.split("\nreal\t")
 			time = (tmp.split("\nuser\t")[1].split('m')[1].split('s')[0].to_f*1000).to_i
 			finished = tmp.last
-			output = output.split("<main>")[0] if lang == "rb"
-			logger.debug(output.inspect)
+			# 余計な文字をカット
+			osize = output.size
+			asize = ans.size
+			output = output.slice(0,asize) if osize>asize
 			# TODO
 			# ↓だと一部のTLEもREに含まれてしまう
 			# もうちょい正確にverdictを切り替えたい
