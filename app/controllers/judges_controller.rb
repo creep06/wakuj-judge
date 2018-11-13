@@ -20,17 +20,23 @@ class JudgesController < ApplicationController
 			file_name = "main.c"
 			container = create_container('gcc:latest', file_name, code)
 			ce = container.exec(["timeout", "10", "bash", "-c", "gcc #{file_name}"]).last != 0
-			exec_cmd = './a.out'
+			exec_cmd = "./a.out"
 		when 'cpp'
 			file_name = "main.cpp"
-			container = create_container('gcc:latest', file_name, code)
-			logger.debug("コンテナを作ったぜ")
+			container = create_container("gcc:latest", file_name, code)
 			ce = container.exec(["timeout", "10", "bash", "-c", "g++ #{file_name}"]).last != 0
-			logger.debug("コンパイルしたぜ")
-			exec_cmd = './a.out'
+			exec_cmd = "./a.out"
+		# Freeなメモリが2GBは必要らしいから今の所キツイ
+		when 'java'
+			file_name = "main.java"
+			container = create_container("openjdk:8", file_name, code)
+			temp = container.exec(["timeout", "10", "bash", "-c", "javac #{file_name}"])
+			logger.debug(temp.inspect)
+			ce = temp.last != 0
+			exec_cmd = "java main"
 		when 'py'
 			file_name = "main.py"
-			container = create_container('python:latest', file_name, code)
+			container = create_container("python:latest", file_name, code)
 			exec_cmd = "python #{file_name}"
 		when 'rb'
 			file_name = "main.rb"
@@ -98,6 +104,8 @@ class JudgesController < ApplicationController
 			output, tmp = res.join.split("\nreal\t")
 			time = (tmp.split("\nuser\t")[1].split('m')[1].split('s')[0].to_f*1000).to_i
 			finished = tmp.last
+			output = output.split("<main>")[0] if lang == "rb"
+			logger.debug(output.inspect)
 			# TODO
 			# ↓だと一部のTLEもREに含まれてしまう
 			# もうちょい正確にverdictを切り替えたい
@@ -113,6 +121,9 @@ class JudgesController < ApplicationController
 			else
 				ver = "RE"
 			end
+
+			logger.debug(ans.inspect)
+			logger.debug(output.inspect)
 
 			totalver = ver if conv[totalver] < conv[ver]
 
