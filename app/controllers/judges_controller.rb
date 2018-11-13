@@ -40,11 +40,15 @@ class JudgesController < ApplicationController
 
 
 		# コンパイル言語かつコンパイルに失敗した場合その時点で終了
+		ret = {}
 		if ce
 			logger.debug("コンパイル失敗だぜ")
 			container.delete(force: true)
-			return 'CE'
+			ret[:ce] = 1
+			tell_finished(ret)
+			return
 		end
+		ret[:ce] = 0
 
 		logger.debug("コンパイル成功だぜ")
 
@@ -67,6 +71,13 @@ class JudgesController < ApplicationController
 		# 一番強いやつをこのsubmissionの総合的なverdictとして返す
 		conv = {"AC"=>0, "RE"=>1, "TLE"=>2, "WA"=>10}
 		totalver = "AC"
+		maxtime = 0
+		maxmemory = 0
+
+		uri = URI.parse("http://localhost:3000/result")
+		http = Net::HTTP.new(uri.host, uri.port)
+		http.use_ssl = false
+		http.verify_mode = OpenSSL::SSL::VERIFY_NONE
 
 		# テストケースを1個ずつダウンロードして実行
 		for i in 1..(testnum)
@@ -78,18 +89,15 @@ class JudgesController < ApplicationController
 			outputfile = session.file_by_title("o" + name + ".txt")
 			outputfile.download_to_file("tmp/testcases/out.txt")
 			ans = File.open("tmp/testcases/out.txt").read
-
 			# 実行
 			container.store_file("/tmp/input.txt", input)
 			logger.debug("テストケース" + i.to_s)
 			res = container.exec(["timeout", "#{tlim*2}", "bash", "-c", "time #{exec_cmd} < input.txt"])
-
 			# おまじない
-			# ぐちゃぐちゃなexecから頑張って出力と実行時間を取り出してる
+			# ぐちゃぐちゃなexecから出力と実行時間を取り出してる
 			output, tmp = res.join.split("\nreal\t")
 			time = (tmp.split("\nuser\t")[1].split('m')[1].split('s')[0].to_f*1000).to_i
 			finished = tmp.last
-
 			# TODO
 			# ↓だと一部のTLEもREに含まれてしまう
 			# もうちょい正確にverdictを切り替えたい
@@ -100,6 +108,7 @@ class JudgesController < ApplicationController
 				when (output == ans && time <= tlim) then ver = "AC"
 				when (output == ans && time > tlim) then ver = "TLE"
 				end
+				maxtime = time if maxtime < time
 			# 正しく完了しなかった場合
 			else
 				ver = "RE"
@@ -107,15 +116,7 @@ class JudgesController < ApplicationController
 
 			totalver = ver if conv[totalver] < conv[ver]
 
-			logger.debug("テストケースを実行したぜ")
-			logger.debug("結果: " + ver)
-			logger.debug("時間: " + time.to_s) if ver!='CE'
-
 			# webサーバーに結果をpost
-			uri = URI.parse("http://localhost:3000/result")
-			http = Net::HTTP.new(uri.host, uri.port)
-			http.use_ssl = false
-			http.verify_mode = OpenSSL::SSL::VERIFY_NONE
 			req = Net::HTTP::Post.new(uri.path)
 			req.set_form_data({
 				name: name,
@@ -130,8 +131,12 @@ class JudgesController < ApplicationController
 		container.delete(force: true)
 		logger.debug("コンテナ削除完了だぜ")
 
-		return totalver
+		ret[:verdict] = totalver
+		ret[:time] = maxtime
+		ret[:memory] = maxmemory
+		tell_finished(ret)
 	end
+
 
 
 	# 言語に応じたdockerコンテナを作成
@@ -155,5 +160,28 @@ class JudgesController < ApplicationController
 	end
 
 
+
+	# ジャッジが終了したらwebサーバーに総合的な結果をpost
+	def tell_finished ret
+		uri = URI.parse("http://localhost:3000/judged")
+		http = Net::HTTP.new(uri.host, uri.port)
+		http.use_ssl = false
+		http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+		req = Net::HTTP::Post.new(uri.path)
+		if (ret[:ce] == 1)
+			req.set_form_data({
+				verdict: "CE",
+				submission_id: params[:submission_id]
+			})
+		else
+			req.set_form_data({
+				verdict: ret[:verdict],
+				time: ret[:time],
+				memory: ret[:memory],
+				submission_id: params[:submission_id]
+			})
+		end
+		http.request(req)
+	end
 
 end
