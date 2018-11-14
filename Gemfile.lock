@@ -187,15 +187,12 @@ DEPENDENCIES
   docker-api
   google_drive
   listen (>= 3.0.5, < 3.2)
-  puma (~> 3.11)
-  rails (~> 5.2.1)
+  puma
+  rails
   spring
   spring-watcher-listen (~> 2.0.0)
   sqlite3
   tzinfo-data
 
-RUBY VERSION
-   ruby 2.5.0p0
-
 BUNDLED WITH
-   1.16.4
+   1.17.1

@@ -79,7 +79,12 @@ class JudgesController < ApplicationController
 		maxtime = 0
 		maxmemory = 0
 
-		uri = URI.parse("http://localhost:3000/result")
+		if Rails.env == "production"
+			uri = URI.parse("https://wakuwaku-judge.herokuapp.com/result")
+		else
+			uri = URI.parse("localhost:3000/result")
+		end
+		#uri = URI.parse("http://localhost:3000/result")
 		http = Net::HTTP.new(uri.host, uri.port)
 		http.use_ssl = false
 		http.verify_mode = OpenSSL::SSL::VERIFY_NONE
@@ -178,7 +183,12 @@ class JudgesController < ApplicationController
 
 	# ジャッジが終了したらwebサーバーに総合的な結果をpost
 	def tell_finished ret
-		uri = URI.parse("http://localhost:3000/judged")
+		if Rails.env == "production"
+			uri = URI.parse("https://wakuwaku-judge.herokuapp.com/judged")
+		else
+			uri = URI.parse("localhost:3000/judged")
+		end
+		#uri = URI.parse("http://localhost:3000/judged")
 		http = Net::HTTP.new(uri.host, uri.port)
 		http.use_ssl = false
 		http.verify_mode = OpenSSL::SSL::VERIFY_NONE

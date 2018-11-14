@@ -31,3 +31,8 @@
 
 # テストケースの中身
 /public/testcases/*
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
