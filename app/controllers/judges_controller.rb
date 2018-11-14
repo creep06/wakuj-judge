@@ -1,5 +1,5 @@
 require 'docker'
-require 'google_drive'
+#require 'google_drive'
 require 'net/http'
 
 class JudgesController < ApplicationController
@@ -70,7 +70,7 @@ class JudgesController < ApplicationController
 		problem_id = params[:problem_id]
 
 		# gdriveにログイン(?)
-		session = GoogleDrive::Session.from_config("config/gdrive.json")
+		#session = GoogleDrive::Session.from_config("config/gdrive.json")
 
 		# 判定→数字の変換表 数字がデカイほど強い
 		# 一番強いやつをこのsubmissionの総合的なverdictとして返す
@@ -88,39 +88,42 @@ class JudgesController < ApplicationController
 		for i in 1..(testnum)
 			# テストケースを名前で検索して一時的に保存
 			name = problem_id + "-" + i.to_s
-			inputfile = session.file_by_title("i" + name + ".txt")
-			inputfile.download_to_file("tmp/testcases/in.txt")
-			input = File.open("tmp/testcases/in.txt").read
-			outputfile = session.file_by_title("o" + name + ".txt")
-			outputfile.download_to_file("tmp/testcases/out.txt")
-			ans = File.open("tmp/testcases/out.txt").read
+			#inputfile = session.file_by_title("i" + name + ".txt")
+			#inputfile.download_to_file("tmp/testcases/in.txt")
+			#input = File.open("tmp/testcases/in.txt").read
+			input = File.open("#{Rails.root}/public/testcases/#{problem_id}/in/i#{name}.txt").read
+			#outputfile = session.file_by_title("o" + name + ".txt")
+			#outputfile.download_to_file("tmp/testcases/out.txt")
+			#ans = File.open("tmp/testcases/out.txt").read
+			ans = File.open("#{Rails.root}/public/testcases/#{problem_id}/out/o#{name}.txt").read
 			# 実行
 			container.store_file("/tmp/input.txt", input)
 			logger.debug("テストケース" + i.to_s)
 			res = container.exec(["timeout", "#{tlim.to_f/1000}", "bash", "-c", "time #{exec_cmd} < input.txt"])
-			# おまじない
-			# ぐちゃぐちゃなexecから出力と実行時間を取り出してる
-			output, tmp = res.join.split("\nreal\t")
-			time = (tmp.split("\nuser\t")[1].split('m')[1].split('s')[0].to_f*1000).to_i
-			finished = tmp.last
-			# 余計な文字をカット
-			osize = output.size
-			asize = ans.size
-			output = output.slice(0,asize) if osize>asize
-			# TODO
-			# ↓だと一部のTLEもREに含まれてしまう
-			# もうちょい正確にverdictを切り替えたい
-			# 実行が正しく完了した場合
-			if finished
-				case
-				when (output != ans) then ver = "WA"
-				when (output == ans && time <= tlim) then ver = "AC"
-				when (output == ans && time > tlim) then ver = "TLE"
+
+			logger.debug("=====実行結果=====")
+			logger.debug(res.inspect)
+			logger.debug("==================")
+
+			# TLE or REの場合
+			if res[0].empty?
+				if res[1].empty?
+					ver = "TLE"
+					maxtime = time = tlim
+				else
+					ver = "RE"
+					time = 0
+				end
+			# プログラムがちゃんと終了した場合
+			else
+				output, tmp = res.join.split("\nreal\t")
+				time = (tmp.split("\nuser\t")[1].split('m')[1].split('s')[0].to_f*1000).to_i
+				if output == ans
+					ver = "AC"
+				else
+					ver = "WA"
 				end
 				maxtime = time if maxtime < time
-			# 正しく完了しなかった場合
-			else
-				ver = "RE"
 			end
 
 			logger.debug(ans.inspect)
@@ -161,7 +164,7 @@ class JudgesController < ApplicationController
 			'Tty' => true,
 			'HostConfig' => {
 				'Memory' => memory,
-				'PidsLimit' => 10
+				'PidsLimit' => 100
 			},
 			'WorkingDir' => '/tmp'
 		}

@@ -28,3 +28,6 @@
 
 # API関連
 /config/gdrive.json
+
+# テストケースの中身
+/public/testcases/*
