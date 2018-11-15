@@ -86,7 +86,7 @@ class JudgesController < ApplicationController
 		end
 		#uri = URI.parse("http://localhost:3000/result")
 		http = Net::HTTP.new(uri.host, uri.port)
-		http.use_ssl = false
+		http.use_ssl = Rails.env.production?
 		http.verify_mode = OpenSSL::SSL::VERIFY_NONE
 
 		# テストケースを1個ずつダウンロードして実行
@@ -190,7 +190,7 @@ class JudgesController < ApplicationController
 		end
 		#uri = URI.parse("http://localhost:3000/judged")
 		http = Net::HTTP.new(uri.host, uri.port)
-		http.use_ssl = false
+		http.use_ssl = Rails.env.production?
 		http.verify_mode = OpenSSL::SSL::VERIFY_NONE
 		req = Net::HTTP::Post.new(uri.path)
 		if (ret[:ce] == 1)
