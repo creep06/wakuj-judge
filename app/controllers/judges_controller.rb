@@ -82,7 +82,7 @@ class JudgesController < ApplicationController
 		if Rails.env == "production"
 			uri = URI.parse("https://wakuwaku-judge.herokuapp.com/result")
 		else
-			uri = URI.parse("localhost:3000/result")
+			uri = URI.parse("http://localhost:3000/result")
 		end
 		#uri = URI.parse("http://localhost:3000/result")
 		http = Net::HTTP.new(uri.host, uri.port)
@@ -186,7 +186,7 @@ class JudgesController < ApplicationController
 		if Rails.env == "production"
 			uri = URI.parse("https://wakuwaku-judge.herokuapp.com/judged")
 		else
-			uri = URI.parse("localhost:3000/judged")
+			uri = URI.parse("http://localhost:3000/judged")
 		end
 		#uri = URI.parse("http://localhost:3000/judged")
 		http = Net::HTTP.new(uri.host, uri.port)
