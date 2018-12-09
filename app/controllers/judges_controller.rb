@@ -18,6 +18,7 @@ class JudgesController < ApplicationController
 			container = create_container('creep04/gccgtime:latest', file_name, code)
 			ce = container.exec(['timeout', '10', 'bash', '-c', "g++ #{file_name}"]).last != 0
 			exec_cmd = './a.out'
+			memory_adjustment = 2500
 		when 'java'
 			file_name = 'main.java'
 			container = create_container('openjdk:8', file_name, code)
@@ -29,10 +30,12 @@ class JudgesController < ApplicationController
 			file_name = 'main.py'
 			container = create_container('creep04/pythongtime:latest', file_name, code)
 			exec_cmd = "python #{file_name}"
+			memory_adjustment = 5000
 		when 'rb'
 			file_name = 'main.rb'
 			container = create_container('creep04/rubygtime:latest', file_name, code)
 			exec_cmd = "ruby #{file_name}"
+			memory_adjustment = 7000
 		end
 
 		# コンパイル言語かつコンパイルに失敗した場合その時点で終了
@@ -100,7 +103,8 @@ class JudgesController < ApplicationController
 			else
 				output, tmp = result[0], result[1]
 				time = (result[1].split(' ')[0].to_f*1000).to_i
-				memory = result[1].split(' ')[1].to_i
+				memory = result[1].split(' ')[1].to_i - memory_adjustment
+				memory = 10 if memory < 0
 
 				# 文末の改行と空白を削除
 				output = cut_last(output)
