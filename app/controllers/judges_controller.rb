@@ -10,12 +10,12 @@ class JudgesController < ApplicationController
 		case lang
 		when 'c'
 			file_name = 'main.c'
-			container = create_container('gcc:latest', file_name, code)
+			container = create_container('creep04/gccgtime:latest', file_name, code)
 			ce = container.exec(['timeout', '10', 'bash', '-c', "gcc #{file_name}"]).last != 0
 			exec_cmd = './a.out'
 		when 'cpp'
 			file_name = 'main.cpp'
-			container = create_container('gcc:latest', file_name, code)
+			container = create_container('creep04/gccgtime:latest', file_name, code)
 			ce = container.exec(['timeout', '10', 'bash', '-c', "g++ #{file_name}"]).last != 0
 			exec_cmd = './a.out'
 		when 'java'
@@ -27,11 +27,11 @@ class JudgesController < ApplicationController
 			exec_cmd = 'java main'
 		when 'py'
 			file_name = 'main.py'
-			container = create_container('python:latest', file_name, code)
+			container = create_container('creep04/pythongtime:latest', file_name, code)
 			exec_cmd = "python #{file_name}"
 		when 'rb'
 			file_name = 'main.rb'
-			container = create_container('ruby:latest', file_name, code)
+			container = create_container('creep04/rubygtime:latest', file_name, code)
 			exec_cmd = "ruby #{file_name}"
 		end
 
@@ -49,14 +49,14 @@ class JudgesController < ApplicationController
 
 		# 時間はms単位で扱ってることに注意 メモリはMB
 		time_limit = params[:time_limit].to_i
-		memory_limit = params[:memory_limit].to_i
+		memory_limit = params[:memory_limit].to_i * 1024
 		testcases_number = params[:testcases_number].to_i
 		problem_id = params[:problem_id]
 		submission_id = params[:submission_id]
 
 		# 判定→数字の変換表
 		# 提出そのものの総合的な判定はこの表で数字が一番デカイやつになる
-		verdict_conversion = {'AC'=>0, 'TLE'=>1, 'RE'=>2, 'WA'=>10}
+		verdict_conversion = {'AC'=>0, 'MLE'=>1, 'TLE'=>2, 'RE'=>3, 'WA'=>10}
 		total_verdict = 'AC'
 		max_time = 0
 		max_memory = 0
@@ -86,20 +86,21 @@ class JudgesController < ApplicationController
 			ans = File.open("#{Rails.root}/public/testcases/#{problem_id}/out/o#{testcase_name}.txt").read
 			container.store_file("/tmp/input.txt", input)
 
-			result = container.exec(['timeout', "#{time_limit.to_f/1000}", 'bash', '-c', "time #{exec_cmd} < input.txt"])
-			# TLE or REの場合
-			if result[0].empty?
-				if result[1].empty?
-					verdict = 'TLE'
-					max_time = time = time_limit
-				else
-					ver = 'RE'
-					time = 0
-				end
-			# プログラムがちゃんと終了した場合
+			result = container.exec(['timeout', "#{time_limit.to_f/1000}", 'bash', '-c', "/usr/bin/time -f \"!!!%U %M!!!\" #{exec_cmd} < input.txt"]).join.split('!!!')
+
+			logger.debug(result.inspect)
+
+			if result.size == 1
+				verdict = 'TLE'
+				max_time = time = time_limit
+				memory = 0
+			elsif result[0].size >= 20 && result[0...18] == 'Command terminated'
+				ver = 'RE'
+				time = memory = 0
 			else
-				output, tmp = result.join.split("\nreal\t")
-				time = (tmp.split("\nuser\t")[1].split('m')[1].split('s')[0].to_f*1000).to_i
+				output, tmp = result[0], result[1]
+				time = (result[1].split(' ')[0].to_f*1000).to_i
+				memory = result[1].split(' ')[1].to_i
 
 				# 文末の改行と空白を削除
 				output = cut_last(output)
@@ -108,8 +109,13 @@ class JudgesController < ApplicationController
 				logger.debug(output.inspect)
 				logger.debug(ans.inspect)
 
-				verdict = (output == ans ? 'AC' : 'WA')
+				if (memory>memory_limit)
+					verdict = 'MLE'
+				else
+					verdict = (output == ans ? 'AC' : 'WA')
+				end
 				max_time = time if max_time < time
+				max_memory = memory if max_memory < memory
 			end
 
 			bef = verdict_conversion[total_verdict]
@@ -122,7 +128,7 @@ class JudgesController < ApplicationController
 				name: testcase_name,
 				verdict: verdict,
 				time: time,
-				memory: 0,
+				memory: memory,
 				submission_id: submission_id
 			})
 			http.request(req)
