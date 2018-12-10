@@ -97,8 +97,8 @@ class JudgesController < ApplicationController
 				verdict = 'TLE'
 				max_time = time = time_limit
 				memory = 0
-			elsif result[0].size >= 20 && result[0][0...18] == 'Command terminated'
-				ver = 'RE'
+			elsif result[0].start_with?("Command terminated")
+				verdict = 'RE'
 				time = memory = 0
 			else
 				output, tmp = result[0], result[1]
