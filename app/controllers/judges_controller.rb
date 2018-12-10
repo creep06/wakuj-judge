@@ -18,7 +18,7 @@ class JudgesController < ApplicationController
 			container = create_container('creep04/gccgtime:latest', file_name, code)
 			ce = container.exec(['timeout', '10', 'bash', '-c', "g++ #{file_name}"]).last != 0
 			exec_cmd = './a.out'
-			memory_adjustment = 2500
+			memory_adjustment = 2800
 		when 'java'
 			file_name = 'main.java'
 			container = create_container('openjdk:8', file_name, code)
@@ -97,7 +97,7 @@ class JudgesController < ApplicationController
 				verdict = 'TLE'
 				max_time = time = time_limit
 				memory = 0
-			elsif result[0].size >= 20 && result[0...18] == 'Command terminated'
+			elsif result[0].size >= 20 && result[0][0...18] == 'Command terminated'
 				ver = 'RE'
 				time = memory = 0
 			else
