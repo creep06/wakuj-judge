@@ -4,9 +4,16 @@ require 'net/http'
 
 class JudgesController < ApplicationController
 	def judge
+		# 時間はms単位で扱ってることに注意 メモリはMB
 		code = params[:code]
 		lang = params[:language]
+		time_limit = params[:time_limit].to_i
+		memory_limit = params[:memory_limit].to_i * 1024
+		testcases_number = params[:testcases_number].to_i
+		problem_id = params[:problem_id]
+		submission_id = params[:submission_id]
 
+		# 言語毎の初期化
 		case lang
 		when 'c'
 			file_name = 'main.c'
@@ -41,21 +48,9 @@ class JudgesController < ApplicationController
 		# コンパイル言語かつコンパイルに失敗した場合その時点で終了
 		if ce
 			container.delete(force: true)
-			tell_finished('CE', 0, 0)
+			finish_judging('CE', 0, 0)
 			return
 		end
-
-		# TODO
-		# MLEの判定
-		# 使用メモリの求め方がわからんから後回し
-		# 今のところメモリ使いすぎたらREになる？
-
-		# 時間はms単位で扱ってることに注意 メモリはMB
-		time_limit = params[:time_limit].to_i
-		memory_limit = params[:memory_limit].to_i * 1024
-		testcases_number = params[:testcases_number].to_i
-		problem_id = params[:problem_id]
-		submission_id = params[:submission_id]
 
 		# 判定→数字の変換表
 		# 提出そのものの総合的な判定はこの表で数字が一番デカイやつになる
@@ -64,35 +59,16 @@ class JudgesController < ApplicationController
 		max_time = 0
 		max_memory = 0
 
-		# POSTの準備
-		if Rails.env.production?
-			uri = URI.parse('https://wakuwaku-judge.herokuapp.com/result')
-		else
-			uri = URI.parse('http://localhost:3000/result')
-		end
-		#uri = URI.parse("http://localhost:3000/result")
-		http = Net::HTTP.new(uri.host, uri.port)
-		http.use_ssl = Rails.env.production?
-		http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-
-		# テストケースを1個ずつ実行
-		#session = GoogleDrive::Session.from_config("config/gdrive.json")
 		for i in 1..(testcases_number)
+			# 入力と答えのtextを作る + コンテナで入力を実行して出力を受け取る
 			testcase_name = problem_id + '-' + i.to_s
-			#inputfile = session.file_by_title("i" + testcase_name + ".txt")
-			#inputfile.download_to_file("tmp/testcases/in.txt")
-			#input = File.open("tmp/testcases/in.txt").read
-			input = File.open("#{Rails.root}/public/testcases/#{problem_id}/in/i#{testcase_name}.txt").read
-			#outputfile = session.file_by_title("o" + testcase_name + ".txt")
-			#outputfile.download_to_file("tmp/testcases/out.txt")
-			#ans = File.open("tmp/testcases/out.txt").read
-			ans = File.open("#{Rails.root}/public/testcases/#{problem_id}/out/o#{testcase_name}.txt").read
-			container.store_file("/tmp/input.txt", input)
-
+			testcase_input = File.open("#{Rails.root}/public/testcases/#{problem_id}/in/i#{testcase_name}.txt").read
+			testcase_answer = File.open("#{Rails.root}/public/testcases/#{problem_id}/out/o#{testcase_name}.txt").read
+			container.store_file("/tmp/input.txt", testcase_input)
 			result = container.exec(['timeout', "#{time_limit.to_f/1000}", 'bash', '-c', "/usr/bin/time -f \"!!!%U %M!!!\" #{exec_cmd} < input.txt"]).join.split('!!!')
-
 			logger.debug(result.inspect)
 
+			# 時間内にコンテナが応答しなかった場合
 			if result.size == 1
 				verdict = 'TLE'
 				max_time = time = time_limit
@@ -105,29 +81,25 @@ class JudgesController < ApplicationController
 				time = (result[1].split(' ')[0].to_f*1000).to_i
 				memory = result[1].split(' ')[1].to_i - memory_adjustment
 				memory = 10 if memory < 0
-
-				# 文末の改行と空白を削除
-				output = cut_last(output)
-				ans = cut_last(ans)
-
-				logger.debug(output.inspect)
-				logger.debug(ans.inspect)
+				output = cut_last_garbage(output)
+				testcase_answer = cut_last_garbage(testcase_answer)
 
 				if (memory>memory_limit)
 					verdict = 'MLE'
 				else
-					verdict = (output == ans ? 'AC' : 'WA')
+					verdict = (output == testcase_answer ? 'AC' : 'WA')
 				end
 				max_time = time if max_time < time
 				max_memory = memory if max_memory < memory
 			end
 
-			bef = verdict_conversion[total_verdict]
-			aft = verdict_conversion[verdict]
-			total_verdict = verdict if bef < aft
+			# 変換表を使ってtotal_verdictを更新
+			old_number = verdict_conversion[total_verdict]
+			new_number = verdict_conversion[verdict]
+			total_verdict = verdict if old_number < new_number
 
-			# webサーバーに結果をpost
-			req = Net::HTTP::Post.new(uri.path)
+			# webサーバーに結果をPOST
+			http, req = brand_new_post('result')
 			req.set_form_data({
 				name: testcase_name,
 				verdict: verdict,
@@ -139,9 +111,22 @@ class JudgesController < ApplicationController
 		end
 
 		container.delete(force: true)
-		tell_finished(total_verdict, max_time, max_memory)
+		finish_judging(total_verdict, max_time, max_memory)
 	end
 
+
+	# 新しいPOSTリクエストを作成
+	def brand_new_post controller
+		if Rails.env.production?
+			uri = URI.parse("https://wakuwaku-judge.herokuapp.com/#{controller}")
+		else
+			uri = URI.parse("http://localhost:3000/#{controller}")
+		end
+		http = Net::HTTP.new(uri.host, uri.port)
+		http.use_ssl = Rails.env.production?
+		http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+		return http, Net::HTTP::Post.new(uri.path)
+	end
 
 
 	# 言語に応じたdockerコンテナを作成
@@ -164,17 +149,10 @@ class JudgesController < ApplicationController
 		return container
 	end
 
-	# ジャッジが終了したらwebサーバーに総合的な結果をpost
-	def tell_finished(verdict, time, memory)
-		if Rails.env == 'production'
-			uri = URI.parse('https://wakuwaku-judge.herokuapp.com/judged')
-		else
-			uri = URI.parse('http://localhost:3000/judged')
-		end
-		http = Net::HTTP.new(uri.host, uri.port)
-		http.use_ssl = Rails.env.production?
-		http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-		req = Net::HTTP::Post.new(uri.path)
+
+	# webサーバーに総合的な結果をpost
+	def finish_judging(verdict, time, memory)
+		http, req = brand_new_post('judged')
 		req.set_form_data({
 			verdict: verdict,
 			time: time,
@@ -184,8 +162,9 @@ class JudgesController < ApplicationController
 		http.request(req)
 	end
 
+
 	# stringの末尾の空白と改行を全て削除
-	def cut_last str
+	def cut_last_garbage str
 		while true
 			fin = true
 			while str[-1] == "\n"
